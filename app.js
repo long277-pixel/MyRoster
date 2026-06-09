@@ -309,8 +309,6 @@ function renderSettings() {
   document.getElementById('cycleStartDate').value = state.timeline.windowStartDate;
   document.getElementById('weeklyHoursBaseline').value = state.settings.weeklyHoursBaseline;
   document.getElementById('daysBaselinePerPeriod').value = state.settings.daysBaselinePerPeriod;
-  document.getElementById('baseHours12Weeks').textContent =
-    minutesToHourString((parseHoursToMinutes(state.settings.weeklyHoursBaseline) || 0) * WEEKS_IN_VIEW);
 }
 
 function renderWeeks() {
