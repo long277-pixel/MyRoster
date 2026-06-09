@@ -4,6 +4,8 @@ const WEEKS_PER_PERIOD = 4;
 const PERIODS_IN_VIEW = WEEKS_IN_VIEW / WEEKS_PER_PERIOD;
 const CUSTOM_ROSTER_LINE_VALUE = '__custom_roster_line__';
 
+let deferredInstallPrompt = null;
+
 function formatLocalISO(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -385,6 +387,30 @@ function exportStateAsJson() {
   URL.revokeObjectURL(url);
 }
 
+function isAppInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function updateInstallButton() {
+  const installButton = document.getElementById('installAppButton');
+  if (!installButton) return;
+
+  const shouldShow = Boolean(deferredInstallPrompt) && !isAppInstalled();
+  installButton.classList.toggle('hidden', !shouldShow);
+}
+
+async function promptInstallApp() {
+  if (!deferredInstallPrompt) return;
+
+  deferredInstallPrompt.prompt();
+  try {
+    await deferredInstallPrompt.userChoice;
+  } finally {
+    deferredInstallPrompt = null;
+    updateInstallButton();
+  }
+}
+
 function importStateFromJsonFile(file) {
   if (!file) return;
 
@@ -712,6 +738,7 @@ document.getElementById('exportJsonButton')?.addEventListener('click', exportSta
 document.getElementById('importJsonButton')?.addEventListener('click', () => {
   document.getElementById('importJsonInput')?.click();
 });
+document.getElementById('installAppButton')?.addEventListener('click', promptInstallApp);
 document.getElementById('importJsonInput')?.addEventListener('change', event => {
   const file = event.target.files && event.target.files[0];
   const confirmed = window.confirm('Importing will replace current saved data. Continue?');
@@ -771,4 +798,16 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  updateInstallButton();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  updateInstallButton();
+});
+
 render();
+updateInstallButton();
