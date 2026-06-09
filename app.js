@@ -1,5 +1,12 @@
 const STORAGE_KEY = 'rosterLeaveTrackerState';
 
+function formatLocalISO(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function getMondayISO(baseDate = new Date()) {
   const d = new Date(baseDate);
   d.setHours(0, 0, 0, 0);
@@ -8,7 +15,7 @@ function getMondayISO(baseDate = new Date()) {
   const diff = day === 0 ? -6 : 1 - day;
 
   d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
+  return formatLocalISO(d);
 }
 
 const initialMonday = getMondayISO();
@@ -36,13 +43,13 @@ const defaultState = {
 let state = loadState();
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return formatLocalISO(new Date());
 }
 
 function addDays(isoDate, days) {
   const d = new Date(isoDate + 'T00:00:00');
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return formatLocalISO(d);
 }
 
 function loadState() {
