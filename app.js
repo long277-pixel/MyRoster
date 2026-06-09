@@ -34,7 +34,8 @@ const defaultState = {
       daysWorked: '',
       weekendWorked: false,
       rosterLine: 'Roster 1',
-      manualRosterText: ''
+      manualRosterText: '',
+      collapsed: false
     }))
   },
   leaveEntries: []
@@ -75,6 +76,7 @@ function mergeState(parsed) {
   if (Array.isArray(parsed.cycle?.weeks)) {
     merged.cycle.weeks = merged.cycle.weeks.map((week, i) => ({
       ...week,
+      collapsed: false,
       ...(parsed.cycle.weeks[i] || {})
     }));
   }
@@ -192,49 +194,68 @@ function renderWeeks() {
 
   state.cycle.weeks.forEach((week, index) => {
     const period = Math.floor(index / 4) + 1;
+    const summaryHours = week.hoursWorked || '—';
+    const summaryDays = week.daysWorked !== '' ? week.daysWorked : '—';
+    const summaryWeekend = week.weekendWorked ? 'Yes' : 'No';
+
     const card = document.createElement('div');
-    card.className = `week-card period-${period}`;
+    card.className = `week-card period-${period} ${week.collapsed ? 'collapsed' : ''}`;
     card.innerHTML = `
-      <h3 class="week-title">Week ${week.id} · Period ${period}</h3>
-      <div class="field">
-        <label>Week Start Date</label>
-        <input type="date" value="${week.startDate}" data-field="startDate" data-week="${index}" />
-      </div>
-      <div class="field">
-        <label>Hours Worked ([h]:mm)</label>
-        <input type="text" placeholder="43:00" value="${week.hoursWorked}" data-field="hoursWorked" data-week="${index}" />
-      </div>
-      <div class="field">
-        <label>Days Worked</label>
-        <input type="number" min="0" step="1" value="${week.daysWorked}" data-field="daysWorked" data-week="${index}" />
-      </div>
-      <div class="field">
-        <label>Roster Line</label>
-        <select data-field="rosterLine" data-week="${index}">
-          <option ${week.rosterLine === 'Roster 1' ? 'selected' : ''}>Roster 1</option>
-          <option ${week.rosterLine === 'Roster 2' ? 'selected' : ''}>Roster 2</option>
-          <option ${week.rosterLine === 'Roster 3' ? 'selected' : ''}>Roster 3</option>
-          <option ${week.rosterLine === 'Manual Entry' ? 'selected' : ''}>Manual Entry</option>
-        </select>
-      </div>
-      <div class="field ${week.rosterLine === 'Manual Entry' ? '' : 'hidden'}">
-        <label>Manual Roster Text</label>
-        <input type="text" value="${week.manualRosterText || ''}" data-field="manualRosterText" data-week="${index}" />
-      </div>
-      <div class="field checkbox-field">
-        <label>
-          <input type="checkbox" ${week.weekendWorked ? 'checked' : ''} data-field="weekendWorked" data-week="${index}" />
-          Weekend Worked
-        </label>
+      <button type="button" class="week-toggle" data-action="toggleWeek" data-week="${index}">
+        <span class="week-title">Week ${week.id} · Period ${period}</span>
+        <span class="week-summary">${week.startDate} · ${summaryHours} hrs · ${summaryDays} days · Weekend: ${summaryWeekend}</span>
+      </button>
+      <div class="week-body ${week.collapsed ? 'hidden' : ''}">
+        <div class="field">
+          <label>Week Start Date</label>
+          <input type="date" value="${week.startDate}" data-field="startDate" data-week="${index}" />
+        </div>
+        <div class="field">
+          <label>Hours Worked ([h]:mm)</label>
+          <input type="text" placeholder="43:00" value="${week.hoursWorked}" data-field="hoursWorked" data-week="${index}" />
+        </div>
+        <div class="field">
+          <label>Days Worked</label>
+          <input type="number" min="0" step="1" value="${week.daysWorked}" data-field="daysWorked" data-week="${index}" />
+        </div>
+        <div class="field">
+          <label>Roster Line</label>
+          <select data-field="rosterLine" data-week="${index}">
+            <option ${week.rosterLine === 'Roster 1' ? 'selected' : ''}>Roster 1</option>
+            <option ${week.rosterLine === 'Roster 2' ? 'selected' : ''}>Roster 2</option>
+            <option ${week.rosterLine === 'Roster 3' ? 'selected' : ''}>Roster 3</option>
+            <option ${week.rosterLine === 'Manual Entry' ? 'selected' : ''}>Manual Entry</option>
+          </select>
+        </div>
+        <div class="field ${week.rosterLine === 'Manual Entry' ? '' : 'hidden'}">
+          <label>Manual Roster Text</label>
+          <input type="text" value="${week.manualRosterText || ''}" data-field="manualRosterText" data-week="${index}" />
+        </div>
+        <div class="field checkbox-field">
+          <label>
+            <input type="checkbox" ${week.weekendWorked ? 'checked' : ''} data-field="weekendWorked" data-week="${index}" />
+            Weekend Worked
+          </label>
+        </div>
       </div>
     `;
     container.appendChild(card);
+  });
+
+  container.querySelectorAll('[data-action="toggleWeek"]').forEach(el => {
+    el.addEventListener('click', handleWeekToggle);
   });
 
   container.querySelectorAll('input, select').forEach(el => {
     el.addEventListener('input', handleWeekInput);
     el.addEventListener('change', handleWeekInput);
   });
+}
+
+function handleWeekToggle(event) {
+  const index = Number(event.currentTarget.dataset.week);
+  state.cycle.weeks[index].collapsed = !state.cycle.weeks[index].collapsed;
+  render();
 }
 
 function handleWeekInput(event) {
