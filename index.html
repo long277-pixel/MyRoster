@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Roster & Leave Tracker</title>
+  <meta name="theme-color" content="#16331b" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <h1>Roster & Leave Tracker</h1>
+      <p class="subtle">12-week offline tracker</p>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <h2>Settings</h2>
+        <div class="field">
+          <label for="cycleStartDate">12-Week Cycle Start Date</label>
+          <input id="cycleStartDate" type="date" />
+        </div>
+        <div class="field">
+          <label for="weeklyHoursBaseline">Weekly Hours Baseline</label>
+          <input id="weeklyHoursBaseline" type="text" placeholder="43:00" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="daysBaselinePerPeriod">Days Baseline Per 4 Weeks</label>
+          <input id="daysBaselinePerPeriod" type="number" min="0" step="1" />
+        </div>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span class="label">12-Week Base Hours</span>
+            <strong id="baseHours12Weeks">0:00</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Weekly Entries</h2>
+        <p class="subtle">Enter data week by week. Summaries update automatically.</p>
+        <div id="weeksContainer"></div>
+      </section>
+
+      <section class="card">
+        <h2>Period Summaries</h2>
+        <div id="periodSummaries"></div>
+      </section>
+
+      <section class="card">
+        <h2>12-Week Summary</h2>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span class="label">Weeks Recorded</span>
+            <strong id="weeksRecorded">0 / 12</strong>
+          </div>
+          <div class="summary-item">
+            <span class="label">Total Actual Hours</span>
+            <strong id="totalActualHours">0:00</strong>
+          </div>
+          <div class="summary-item">
+            <span class="label">Average Weekly Hours</span>
+            <strong id="avgWeeklyHours">0:00</strong>
+          </div>
+          <div class="summary-item">
+            <span class="label">Weekly Variance</span>
+            <strong id="weeklyVariance" class="status-ok">On target</strong>
+          </div>
+          <div class="summary-item">
+            <span class="label">Weekends Worked</span>
+            <strong id="weekendsWorked" class="status-ok">0 / 6</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Personal Leave Tracker</h2>
+        <form id="leaveForm" class="leave-form">
+          <div class="field">
+            <label for="leaveStart">Start Date</label>
+            <input id="leaveStart" type="date" required />
+          </div>
+          <div class="field">
+            <label for="leaveEnd">End Date</label>
+            <input id="leaveEnd" type="date" required />
+          </div>
+          <div class="field checkbox-field">
+            <label>
+              <input id="leaveMedical" type="checkbox" />
+              Medical Certificate Provided
+            </label>
+          </div>
+          <button type="submit" class="btn">Add Leave Entry</button>
+        </form>
+
+        <div class="field">
+          <label for="leaveYearFilter">Calendar Year</label>
+          <input id="leaveYearFilter" type="number" min="2000" max="2100" step="1" />
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span class="label">Leave Days This Year</span>
+            <strong id="leaveDaysTotal">0</strong>
+          </div>
+          <div class="summary-item">
+            <span class="label">Missing Certificates</span>
+            <strong id="missingCertificates">0</strong>
+          </div>
+        </div>
+
+        <div id="leaveList" class="leave-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
