@@ -1,15 +1,28 @@
 const STORAGE_KEY = 'rosterLeaveTrackerState';
 
+function getMondayISO(baseDate = new Date()) {
+  const d = new Date(baseDate);
+  d.setHours(0, 0, 0, 0);
+
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+const initialMonday = getMondayISO();
+
 const defaultState = {
   settings: {
     weeklyHoursBaseline: '43:00',
     daysBaselinePerPeriod: 16
   },
   cycle: {
-    startDate: todayISO(),
+    startDate: initialMonday,
     weeks: Array.from({ length: 12 }, (_, index) => ({
       id: index + 1,
-      startDate: addDays(todayISO(), index * 7),
+      startDate: addDays(initialMonday, index * 7),
       hoursWorked: '',
       daysWorked: '',
       weekendWorked: false,
@@ -221,6 +234,16 @@ function handleWeekInput(event) {
   const index = Number(event.target.dataset.week);
   const field = event.target.dataset.field;
   const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+
+  if (field === 'startDate' && index === 0) {
+    state.cycle.startDate = value;
+    state.cycle.weeks.forEach((week, weekIndex) => {
+      week.startDate = addDays(value, weekIndex * 7);
+    });
+    render();
+    return;
+  }
+
   state.cycle.weeks[index][field] = value;
   render();
 }
