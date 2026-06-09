@@ -263,6 +263,14 @@ function navigateWindow(offsetWeeks) {
   render();
 }
 
+function commitWeekField(startDate, field, value) {
+  const weekMap = getWeeksMap();
+  const week = weekMap.get(startDate) || createWeek(startDate);
+  week[field] = value;
+  weekMap.set(startDate, normalizeWeek(week));
+  setWeeksMap(weekMap);
+}
+
 function render() {
   ensureWindowWeeks(state.timeline.windowStartDate);
   renderSettings();
@@ -296,7 +304,7 @@ function renderWeeks() {
   `;
   container.appendChild(toolbar);
 
-  visibleWeeks.forEach((week, index) => {
+  visibleWeeks.forEach((week) => {
     const summaryHours = week.hoursWorked || '—';
     const summaryDays = week.daysWorked !== '' ? week.daysWorked : '—';
     const summaryWeekend = week.weekendWorked === true ? 'Worked' : week.weekendWorked === false ? 'Not worked' : 'Not set';
@@ -355,8 +363,11 @@ function renderWeeks() {
   });
 
   container.querySelectorAll('input[data-field], select[data-field]').forEach(el => {
-    el.addEventListener('input', handleWeekInput);
-    el.addEventListener('change', handleWeekInput);
+    if (el.tagName === 'SELECT') {
+      el.addEventListener('change', handleWeekChange);
+    } else {
+      el.addEventListener('blur', handleWeekBlur);
+    }
   });
 }
 
@@ -370,20 +381,24 @@ function handleWeekToggle(event) {
   render();
 }
 
-function handleWeekInput(event) {
+function handleWeekBlur(event) {
   const startDate = event.target.dataset.startDate;
   const field = event.target.dataset.field;
-  let value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+  const value = event.target.value;
+  commitWeekField(startDate, field, value);
+  render();
+}
+
+function handleWeekChange(event) {
+  const startDate = event.target.dataset.startDate;
+  const field = event.target.dataset.field;
+  let value = event.target.value;
 
   if (field === 'weekendWorked') {
     value = value === 'true' ? true : value === 'false' ? false : null;
   }
 
-  const weekMap = getWeeksMap();
-  const week = weekMap.get(startDate) || createWeek(startDate);
-  week[field] = value;
-  weekMap.set(startDate, normalizeWeek(week));
-  setWeeksMap(weekMap);
+  commitWeekField(startDate, field, value);
   render();
 }
 
