@@ -32,10 +32,10 @@ const defaultState = {
       startDate: addDays(initialMonday, index * 7),
       hoursWorked: '',
       daysWorked: '',
-      weekendWorked: false,
+      weekendWorked: null,
       rosterLine: 'Roster 1',
       manualRosterText: '',
-      collapsed: false
+      collapsed: true
     }))
   },
   leaveEntries: []
@@ -76,7 +76,8 @@ function mergeState(parsed) {
   if (Array.isArray(parsed.cycle?.weeks)) {
     merged.cycle.weeks = merged.cycle.weeks.map((week, i) => ({
       ...week,
-      collapsed: false,
+      weekendWorked: null,
+      collapsed: true,
       ...(parsed.cycle.weeks[i] || {})
     }));
   }
@@ -127,7 +128,7 @@ function computePeriodSummary(periodIndex) {
   const recordedWeeks = weeks.filter(w => parseHoursToMinutes(w.hoursWorked) !== null);
   const totalMinutes = recordedWeeks.reduce((sum, w) => sum + parseHoursToMinutes(w.hoursWorked), 0);
   const totalDays = weeks.reduce((sum, w) => sum + (Number(w.daysWorked) || 0), 0);
-  const weekendsWorked = weeks.filter(w => w.weekendWorked).length;
+  const weekendsWorked = weeks.filter(w => w.weekendWorked === true).length;
   const baselineMinutes = parseHoursToMinutes(state.settings.weeklyHoursBaseline) || 0;
   const averageMinutes = recordedWeeks.length ? totalMinutes / recordedWeeks.length : 0;
   const varianceMinutes = averageMinutes - baselineMinutes;
@@ -152,7 +153,7 @@ function computeCycleSummary() {
   const baselineMinutes = parseHoursToMinutes(state.settings.weeklyHoursBaseline) || 0;
   const averageMinutes = recordedWeeks.length ? totalMinutes / recordedWeeks.length : 0;
   const varianceMinutes = averageMinutes - baselineMinutes;
-  const weekendsWorked = state.cycle.weeks.filter(w => w.weekendWorked).length;
+  const weekendsWorked = state.cycle.weeks.filter(w => w.weekendWorked === true).length;
 
   return {
     recordedWeeks: recordedWeeks.length,
@@ -196,7 +197,7 @@ function renderWeeks() {
     const period = Math.floor(index / 4) + 1;
     const summaryHours = week.hoursWorked || '—';
     const summaryDays = week.daysWorked !== '' ? week.daysWorked : '—';
-    const summaryWeekend = week.weekendWorked ? 'Yes' : 'No';
+    const summaryWeekend = week.weekendWorked === true ? 'Worked' : week.weekendWorked === false ? 'Not worked' : 'Not set';
 
     const card = document.createElement('div');
     card.className = `week-card period-${period} ${week.collapsed ? 'collapsed' : ''}`;
@@ -231,11 +232,13 @@ function renderWeeks() {
           <label>Manual Roster Text</label>
           <input type="text" value="${week.manualRosterText || ''}" data-field="manualRosterText" data-week="${index}" />
         </div>
-        <div class="field checkbox-field">
-          <label>
-            <input type="checkbox" ${week.weekendWorked ? 'checked' : ''} data-field="weekendWorked" data-week="${index}" />
-            Weekend Worked
-          </label>
+        <div class="field">
+          <label>Weekend Worked</label>
+          <select data-field="weekendWorked" data-week="${index}">
+            <option value="" ${week.weekendWorked === null ? 'selected' : ''}>Not set</option>
+            <option value="true" ${week.weekendWorked === true ? 'selected' : ''}>Worked</option>
+            <option value="false" ${week.weekendWorked === false ? 'selected' : ''}>Not worked</option>
+          </select>
         </div>
       </div>
     `;
@@ -261,7 +264,11 @@ function handleWeekToggle(event) {
 function handleWeekInput(event) {
   const index = Number(event.target.dataset.week);
   const field = event.target.dataset.field;
-  const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+  let value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+
+  if (field === 'weekendWorked') {
+    value = value === 'true' ? true : value === 'false' ? false : null;
+  }
 
   if (field === 'startDate' && index === 0) {
     state.cycle.startDate = value;
