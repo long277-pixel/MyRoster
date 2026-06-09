@@ -1,0 +1,9 @@
+{
+  "name": "Roster & Leave Tracker",
+  "short_name": "RosterTracker",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f1511",
+  "theme_color": "#16331b",
+  "icons": []
+}
