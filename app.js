@@ -271,6 +271,30 @@ function commitWeekField(startDate, field, value) {
   setWeeksMap(weekMap);
 }
 
+async function refreshAppAssets() {
+  const button = document.getElementById('devRefreshButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Refreshing…';
+  }
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration => registration.unregister()));
+    }
+
+    if ('caches' in window) {
+      const cacheKeys = await caches.keys();
+      await Promise.all(cacheKeys.map(key => caches.delete(key)));
+    }
+  } catch (error) {
+    console.error('Failed to refresh app assets', error);
+  } finally {
+    window.location.reload();
+  }
+}
+
 function render() {
   ensureWindowWeeks(state.timeline.windowStartDate);
   renderSettings();
@@ -513,6 +537,7 @@ document.getElementById('daysBaselinePerPeriod').addEventListener('input', e => 
 });
 
 document.getElementById('leaveYearFilter').addEventListener('input', renderLeaveSection);
+document.getElementById('devRefreshButton')?.addEventListener('click', refreshAppAssets);
 
 document.getElementById('leaveForm').addEventListener('submit', e => {
   e.preventDefault();
