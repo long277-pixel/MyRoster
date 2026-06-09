@@ -1,4 +1,7 @@
 const STORAGE_KEY = 'rosterLeaveTrackerState';
+const WEEKS_IN_VIEW = 12;
+const WEEKS_PER_PERIOD = 4;
+const PERIODS_IN_VIEW = WEEKS_IN_VIEW / WEEKS_PER_PERIOD;
 
 function formatLocalISO(date) {
   const year = date.getFullYear();
@@ -18,31 +21,6 @@ function getMondayISO(baseDate = new Date()) {
   return formatLocalISO(d);
 }
 
-const initialMonday = getMondayISO();
-
-const defaultState = {
-  settings: {
-    weeklyHoursBaseline: '43:00',
-    daysBaselinePerPeriod: 16
-  },
-  cycle: {
-    startDate: initialMonday,
-    weeks: Array.from({ length: 12 }, (_, index) => ({
-      id: index + 1,
-      startDate: addDays(initialMonday, index * 7),
-      hoursWorked: '',
-      daysWorked: '',
-      weekendWorked: null,
-      rosterLine: 'Roster 1',
-      manualRosterText: '',
-      collapsed: true
-    }))
-  },
-  leaveEntries: []
-};
-
-let state = loadState();
-
 function todayISO() {
   return formatLocalISO(new Date());
 }
@@ -52,6 +30,51 @@ function addDays(isoDate, days) {
   d.setDate(d.getDate() + days);
   return formatLocalISO(d);
 }
+
+function diffWeeks(startISO, endISO) {
+  const start = new Date(startISO + 'T00:00:00');
+  const end = new Date(endISO + 'T00:00:00');
+  return Math.round((end - start) / (7 * 24 * 60 * 60 * 1000));
+}
+
+function createWeek(startDate, overrides = {}) {
+  return {
+    startDate,
+    hoursWorked: '',
+    daysWorked: '',
+    weekendWorked: null,
+    rosterLine: 'Roster 1',
+    manualRosterText: '',
+    collapsed: true,
+    ...overrides,
+    startDate
+  };
+}
+
+function buildRollingWeeks(anchorDate, count = WEEKS_IN_VIEW, existingWeeks = []) {
+  const byStartDate = new Map(existingWeeks.map(week => [week.startDate, week]));
+  return Array.from({ length: count }, (_, index) => {
+    const startDate = addDays(anchorDate, index * 7);
+    return createWeek(startDate, byStartDate.get(startDate) || {});
+  });
+}
+
+const initialMonday = getMondayISO();
+
+const defaultState = {
+  settings: {
+    weeklyHoursBaseline: '43:00',
+    daysBaselinePerPeriod: 16
+  },
+  timeline: {
+    anchorDate: initialMonday,
+    currentWeekStartDate: initialMonday,
+    weeks: buildRollingWeeks(initialMonday)
+  },
+  leaveEntries: []
+};
+
+let state = loadState();
 
 function loadState() {
   try {
@@ -66,27 +89,82 @@ function loadState() {
 
 function mergeState(parsed) {
   const merged = structuredClone(defaultState);
+
   if (parsed.settings) {
     merged.settings.weeklyHoursBaseline = parsed.settings.weeklyHoursBaseline || merged.settings.weeklyHoursBaseline;
     merged.settings.daysBaselinePerPeriod = Number.isFinite(parsed.settings.daysBaselinePerPeriod)
       ? parsed.settings.daysBaselinePerPeriod
       : Number(parsed.settings.daysBaselinePerPeriod) || merged.settings.daysBaselinePerPeriod;
   }
-  if (parsed.cycle?.startDate) merged.cycle.startDate = parsed.cycle.startDate;
-  if (Array.isArray(parsed.cycle?.weeks)) {
-    merged.cycle.weeks = merged.cycle.weeks.map((week, i) => ({
-      ...week,
-      weekendWorked: null,
-      collapsed: true,
-      ...(parsed.cycle.weeks[i] || {})
-    }));
-  }
+
+  const todayMonday = getMondayISO();
+  const legacyStartDate = parsed.cycle?.startDate;
+  const timelineAnchor = parsed.timeline?.anchorDate || legacyStartDate || todayMonday;
+  const currentWeekStartDate = parsed.timeline?.currentWeekStartDate || todayMonday;
+  const persistedWeeks = Array.isArray(parsed.timeline?.weeks)
+    ? parsed.timeline.weeks
+    : Array.isArray(parsed.cycle?.weeks)
+      ? parsed.cycle.weeks
+      : [];
+
+  merged.timeline.anchorDate = timelineAnchor;
+  merged.timeline.currentWeekStartDate = currentWeekStartDate;
+  merged.timeline.weeks = buildRollingWeeks(timelineAnchor, WEEKS_IN_VIEW, persistedWeeks).map(week => ({
+    ...week,
+    weekendWorked: week.weekendWorked === true ? true : week.weekendWorked === false ? false : null,
+    collapsed: Boolean(week.collapsed)
+  }));
+
   if (Array.isArray(parsed.leaveEntries)) merged.leaveEntries = parsed.leaveEntries;
   return merged;
 }
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function ensureTimelineCoverage(targetStartDate) {
+  if (!state.timeline.weeks.length) {
+    state.timeline.anchorDate = targetStartDate;
+    state.timeline.weeks = buildRollingWeeks(targetStartDate);
+    return;
+  }
+
+  while (diffWeeks(state.timeline.anchorDate, targetStartDate) < 0) {
+    const newAnchor = addDays(state.timeline.anchorDate, -7);
+    state.timeline.weeks.unshift(createWeek(newAnchor));
+    state.timeline.anchorDate = newAnchor;
+  }
+
+  while (diffWeeks(state.timeline.anchorDate, targetStartDate) + WEEKS_IN_VIEW > state.timeline.weeks.length) {
+    const nextStart = addDays(state.timeline.anchorDate, state.timeline.weeks.length * 7);
+    state.timeline.weeks.push(createWeek(nextStart));
+  }
+}
+
+function clampAnchorToCurrentWindow() {
+  ensureTimelineCoverage(state.timeline.currentWeekStartDate);
+  const minAnchor = state.timeline.currentWeekStartDate;
+  const maxAnchor = addDays(state.timeline.currentWeekStartDate, (state.timeline.weeks.length - WEEKS_IN_VIEW) * 7);
+
+  if (diffWeeks(minAnchor, state.timeline.anchorDate) < 0) {
+    state.timeline.anchorDate = minAnchor;
+  }
+
+  if (diffWeeks(state.timeline.anchorDate, maxAnchor) < 0) {
+    state.timeline.anchorDate = maxAnchor;
+  }
+}
+
+function getVisibleWeeks() {
+  ensureTimelineCoverage(state.timeline.anchorDate);
+  const startIndex = Math.max(0, diffWeeks(state.timeline.currentWeekStartDate, state.timeline.anchorDate));
+  return state.timeline.weeks.slice(startIndex, startIndex + WEEKS_IN_VIEW).map((week, index) => ({
+    ...week,
+    absoluteIndex: startIndex + index,
+    windowIndex: index,
+    displayNumber: startIndex + index + 1
+  }));
 }
 
 function parseHoursToMinutes(value) {
@@ -114,17 +192,17 @@ function statusClass(isOver) {
   return isOver ? 'status-over' : 'status-ok';
 }
 
-function getRecordedWeeks() {
-  return state.cycle.weeks.filter(w => parseHoursToMinutes(w.hoursWorked) !== null);
+function getRecordedWeeks(weeks) {
+  return weeks.filter(w => parseHoursToMinutes(w.hoursWorked) !== null);
 }
 
-function getPeriodWeeks(periodIndex) {
-  const start = periodIndex * 4;
-  return state.cycle.weeks.slice(start, start + 4);
+function getPeriodWeeks(weeks, periodIndex) {
+  const start = periodIndex * WEEKS_PER_PERIOD;
+  return weeks.slice(start, start + WEEKS_PER_PERIOD);
 }
 
-function computePeriodSummary(periodIndex) {
-  const weeks = getPeriodWeeks(periodIndex);
+function computePeriodSummary(visibleWeeks, periodIndex) {
+  const weeks = getPeriodWeeks(visibleWeeks, periodIndex);
   const recordedWeeks = weeks.filter(w => parseHoursToMinutes(w.hoursWorked) !== null);
   const totalMinutes = recordedWeeks.reduce((sum, w) => sum + parseHoursToMinutes(w.hoursWorked), 0);
   const totalDays = weeks.reduce((sum, w) => sum + (Number(w.daysWorked) || 0), 0);
@@ -132,7 +210,7 @@ function computePeriodSummary(periodIndex) {
   const baselineMinutes = parseHoursToMinutes(state.settings.weeklyHoursBaseline) || 0;
   const averageMinutes = recordedWeeks.length ? totalMinutes / recordedWeeks.length : 0;
   const varianceMinutes = averageMinutes - baselineMinutes;
-  const completeForDays = weeks.every(w => Number(w.daysWorked) >= 0 && String(w.daysWorked) !== '');
+  const completeForDays = weeks.length === WEEKS_PER_PERIOD && weeks.every(w => Number(w.daysWorked) >= 0 && String(w.daysWorked) !== '');
   const daysVariance = completeForDays ? totalDays - Number(state.settings.daysBaselinePerPeriod || 0) : null;
 
   return {
@@ -147,13 +225,13 @@ function computePeriodSummary(periodIndex) {
   };
 }
 
-function computeCycleSummary() {
-  const recordedWeeks = getRecordedWeeks();
+function computeTimelineSummary(visibleWeeks) {
+  const recordedWeeks = getRecordedWeeks(visibleWeeks);
   const totalMinutes = recordedWeeks.reduce((sum, w) => sum + parseHoursToMinutes(w.hoursWorked), 0);
   const baselineMinutes = parseHoursToMinutes(state.settings.weeklyHoursBaseline) || 0;
   const averageMinutes = recordedWeeks.length ? totalMinutes / recordedWeeks.length : 0;
   const varianceMinutes = averageMinutes - baselineMinutes;
-  const weekendsWorked = state.cycle.weeks.filter(w => w.weekendWorked === true).length;
+  const weekendsWorked = visibleWeeks.filter(w => w.weekendWorked === true).length;
 
   return {
     recordedWeeks: recordedWeeks.length,
@@ -161,7 +239,7 @@ function computeCycleSummary() {
     averageMinutes,
     varianceMinutes,
     weekendsWorked,
-    baseHours12Weeks: baselineMinutes * 12
+    baseHours12Weeks: baselineMinutes * WEEKS_IN_VIEW
   };
 }
 
@@ -173,6 +251,7 @@ function inclusiveDaysBetween(start, end) {
 }
 
 function render() {
+  clampAnchorToCurrentWindow();
   renderSettings();
   renderWeeks();
   renderPeriodSummaries();
@@ -182,19 +261,21 @@ function render() {
 }
 
 function renderSettings() {
-  document.getElementById('cycleStartDate').value = state.cycle.startDate;
+  document.getElementById('cycleStartDate').value = state.timeline.anchorDate;
   document.getElementById('weeklyHoursBaseline').value = state.settings.weeklyHoursBaseline;
   document.getElementById('daysBaselinePerPeriod').value = state.settings.daysBaselinePerPeriod;
   document.getElementById('baseHours12Weeks').textContent =
-    minutesToHourString((parseHoursToMinutes(state.settings.weeklyHoursBaseline) || 0) * 12);
+    minutesToHourString((parseHoursToMinutes(state.settings.weeklyHoursBaseline) || 0) * WEEKS_IN_VIEW);
 }
 
 function renderWeeks() {
   const container = document.getElementById('weeksContainer');
   container.innerHTML = '';
 
-  state.cycle.weeks.forEach((week, index) => {
-    const period = Math.floor(index / 4) + 1;
+  const visibleWeeks = getVisibleWeeks();
+
+  visibleWeeks.forEach((week, index) => {
+    const period = Math.floor(index / WEEKS_PER_PERIOD) + 1;
     const summaryHours = week.hoursWorked || '—';
     const summaryDays = week.daysWorked !== '' ? week.daysWorked : '—';
     const summaryWeekend = week.weekendWorked === true ? 'Worked' : week.weekendWorked === false ? 'Not worked' : 'Not set';
@@ -202,26 +283,26 @@ function renderWeeks() {
     const card = document.createElement('div');
     card.className = `week-card period-${period} ${week.collapsed ? 'collapsed' : ''}`;
     card.innerHTML = `
-      <button type="button" class="week-toggle" data-action="toggleWeek" data-week="${index}">
-        <span class="week-title">Week ${week.id} · Period ${period}</span>
+      <button type="button" class="week-toggle" data-action="toggleWeek" data-week="${week.absoluteIndex}">
+        <span class="week-title">Week ${week.displayNumber} · Period ${period}</span>
         <span class="week-summary">${week.startDate} · ${summaryHours} hrs · ${summaryDays} days · Weekend: ${summaryWeekend}</span>
       </button>
       <div class="week-body ${week.collapsed ? 'hidden' : ''}">
         <div class="field">
           <label>Week Start Date</label>
-          <input type="date" value="${week.startDate}" data-field="startDate" data-week="${index}" />
+          <input type="date" value="${week.startDate}" data-field="startDate" data-week="${week.absoluteIndex}" />
         </div>
         <div class="field">
           <label>Hours Worked ([h]:mm)</label>
-          <input type="text" placeholder="43:00" value="${week.hoursWorked}" data-field="hoursWorked" data-week="${index}" />
+          <input type="text" placeholder="43:00" value="${week.hoursWorked}" data-field="hoursWorked" data-week="${week.absoluteIndex}" />
         </div>
         <div class="field">
           <label>Days Worked</label>
-          <input type="number" min="0" step="1" value="${week.daysWorked}" data-field="daysWorked" data-week="${index}" />
+          <input type="number" min="0" step="1" value="${week.daysWorked}" data-field="daysWorked" data-week="${week.absoluteIndex}" />
         </div>
         <div class="field">
           <label>Roster Line</label>
-          <select data-field="rosterLine" data-week="${index}">
+          <select data-field="rosterLine" data-week="${week.absoluteIndex}">
             <option ${week.rosterLine === 'Roster 1' ? 'selected' : ''}>Roster 1</option>
             <option ${week.rosterLine === 'Roster 2' ? 'selected' : ''}>Roster 2</option>
             <option ${week.rosterLine === 'Roster 3' ? 'selected' : ''}>Roster 3</option>
@@ -230,11 +311,11 @@ function renderWeeks() {
         </div>
         <div class="field ${week.rosterLine === 'Manual Entry' ? '' : 'hidden'}">
           <label>Manual Roster Text</label>
-          <input type="text" value="${week.manualRosterText || ''}" data-field="manualRosterText" data-week="${index}" />
+          <input type="text" value="${week.manualRosterText || ''}" data-field="manualRosterText" data-week="${week.absoluteIndex}" />
         </div>
         <div class="field">
           <label>Weekend Worked</label>
-          <select data-field="weekendWorked" data-week="${index}">
+          <select data-field="weekendWorked" data-week="${week.absoluteIndex}">
             <option value="" ${week.weekendWorked === null ? 'selected' : ''}>Not set</option>
             <option value="true" ${week.weekendWorked === true ? 'selected' : ''}>Worked</option>
             <option value="false" ${week.weekendWorked === false ? 'selected' : ''}>Not worked</option>
@@ -257,7 +338,7 @@ function renderWeeks() {
 
 function handleWeekToggle(event) {
   const index = Number(event.currentTarget.dataset.week);
-  state.cycle.weeks[index].collapsed = !state.cycle.weeks[index].collapsed;
+  state.timeline.weeks[index].collapsed = !state.timeline.weeks[index].collapsed;
   render();
 }
 
@@ -270,25 +351,22 @@ function handleWeekInput(event) {
     value = value === 'true' ? true : value === 'false' ? false : null;
   }
 
-  if (field === 'startDate' && index === 0) {
-    state.cycle.startDate = value;
-    state.cycle.weeks.forEach((week, weekIndex) => {
-      week.startDate = addDays(value, weekIndex * 7);
-    });
-    render();
-    return;
+  state.timeline.weeks[index][field] = value;
+
+  if (field === 'startDate') {
+    state.timeline.currentWeekStartDate = state.timeline.weeks[0].startDate;
   }
 
-  state.cycle.weeks[index][field] = value;
   render();
 }
 
 function renderPeriodSummaries() {
   const container = document.getElementById('periodSummaries');
   container.innerHTML = '';
+  const visibleWeeks = getVisibleWeeks();
 
-  for (let i = 0; i < 3; i++) {
-    const s = computePeriodSummary(i);
+  for (let i = 0; i < PERIODS_IN_VIEW; i++) {
+    const s = computePeriodSummary(visibleWeeks, i);
     const overHours = s.varianceMinutes > 0;
     const period = document.createElement('div');
     period.className = 'period-summary';
@@ -297,7 +375,7 @@ function renderPeriodSummaries() {
       <div class="summary-grid">
         <div class="summary-item">
           <span class="label">Recorded Weeks</span>
-          <strong>${s.recordedWeeks} / 4</strong>
+          <strong>${s.recordedWeeks} / ${WEEKS_PER_PERIOD}</strong>
         </div>
         <div class="summary-item">
           <span class="label">Total Hours</span>
@@ -332,11 +410,12 @@ function renderPeriodSummaries() {
 }
 
 function renderCycleSummary() {
-  const s = computeCycleSummary();
+  const visibleWeeks = getVisibleWeeks();
+  const s = computeTimelineSummary(visibleWeeks);
   const varianceOver = s.varianceMinutes > 0;
   const weekendsOver = s.weekendsWorked > 6;
 
-  document.getElementById('weeksRecorded').textContent = `${s.recordedWeeks} / 12`;
+  document.getElementById('weeksRecorded').textContent = `${s.recordedWeeks} / ${WEEKS_IN_VIEW}`;
   document.getElementById('totalActualHours').textContent = minutesToHourString(s.totalMinutes);
   document.getElementById('avgWeeklyHours').textContent = s.recordedWeeks ? minutesToHourString(s.averageMinutes) : '0:00';
 
@@ -376,10 +455,9 @@ function renderLeaveSection() {
 }
 
 document.getElementById('cycleStartDate').addEventListener('change', e => {
-  state.cycle.startDate = e.target.value;
-  state.cycle.weeks.forEach((week, index) => {
-    week.startDate = addDays(state.cycle.startDate, index * 7);
-  });
+  const newAnchor = e.target.value;
+  ensureTimelineCoverage(newAnchor);
+  state.timeline.anchorDate = newAnchor;
   render();
 });
 
