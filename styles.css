@@ -28,7 +28,8 @@ body {
   margin: 0 auto;
   min-height: 100vh;
   position: relative;
-  padding-bottom: 84px;
+  padding-bottom: 24px;
+  text-align: center;
 }
 
 .app-header {
@@ -62,8 +63,58 @@ body {
   background: var(--card-alt);
 }
 
+.settings-panel {
+  text-align: center;
+}
+
+.panel-toggle,
+.week-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.panel-toggle {
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.week-toggle {
+  flex-wrap: wrap;
+}
+
+.collapse-indicator {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.week-summary {
+  width: 100%;
+}
+
+.settings-panel input,
+.settings-panel select,
+.settings-panel button {
+  text-align: center;
+}
+
+.settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 h2, h3 {
   margin-top: 0;
+}
+
+.summary-meta {
+  margin: -2px 0 10px;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .field {
@@ -85,6 +136,7 @@ input, select, button {
   color: var(--text);
   padding: 10px 12px;
   font-size: 1rem;
+  text-align: center;
 }
 
 .checkbox-field label {
@@ -102,6 +154,31 @@ input, select, button {
   color: #08100a;
   border: none;
   font-weight: 700;
+}
+
+.weeks-toolbar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.weeks-nav-button {
+  background: #23482d;
+  border: 1px solid #3a6a47;
+  color: #e7f8eb;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+}
+
+.weeks-nav-current {
+  background: var(--accent);
+  border: none;
+  color: #08100a;
+}
+
+.weeks-nav-button:hover {
+  filter: brightness(1.08);
 }
 
 .week-card {
@@ -141,6 +218,16 @@ input, select, button {
   margin-bottom: 6px;
 }
 
+.inline-metrics {
+  display: inline-block;
+  line-height: 1.6;
+}
+
+.metric-separator {
+  color: var(--muted);
+  padding: 0 4px;
+}
+
 .period-summary {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -172,18 +259,25 @@ input, select, button {
   background: rgba(255,255,255,0.03);
 }
 
+.leave-delete-button {
+  width: auto;
+  margin-left: auto;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  background: var(--red-bg);
+  color: var(--red-text);
+  border: 1px solid rgba(255, 190, 200, 0.35);
+}
+
 .dev-refresh-button {
-  position: fixed;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  width: min(376px, calc(100vw - 24px));
-  z-index: 1000;
+  margin-top: 6px;
+  width: 100%;
   background: var(--accent);
   color: #08100a;
   border: none;
   font-weight: 700;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
 }
 
 .dev-refresh-button:disabled {

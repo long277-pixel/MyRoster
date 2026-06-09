@@ -2,12 +2,20 @@ const STORAGE_KEY = 'rosterLeaveTrackerState';
 const WEEKS_IN_VIEW = 12;
 const WEEKS_PER_PERIOD = 4;
 const PERIODS_IN_VIEW = WEEKS_IN_VIEW / WEEKS_PER_PERIOD;
+const CUSTOM_ROSTER_LINE_VALUE = '__custom_roster_line__';
 
 function formatLocalISO(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(isoDate) {
+  if (!isoDate) return '';
+  const [year, month, day] = isoDate.split('-');
+  if (!year || !month || !day) return isoDate;
+  return `${day}-${month}-${year}`;
 }
 
 function getMondayISO(baseDate = new Date()) {
@@ -39,7 +47,7 @@ function createWeek(startDate, overrides = {}) {
     hoursWorked: '',
     daysWorked: '',
     weekendWorked: null,
-    rosterLine: 'Roster 1',
+    rosterLine: '',
     manualRosterText: '',
     collapsed: true,
     ...overrides,
@@ -47,11 +55,28 @@ function createWeek(startDate, overrides = {}) {
   };
 }
 
+function normalizeRosterLine(week = {}) {
+  const nextWeek = { ...week };
+  const rosterLine = typeof nextWeek.rosterLine === 'string' ? nextWeek.rosterLine.trim() : '';
+  const manualRosterText = typeof nextWeek.manualRosterText === 'string' ? nextWeek.manualRosterText.trim() : '';
+
+  if (!rosterLine || /^Roster\s\d+$/i.test(rosterLine) || rosterLine === 'Manual Entry') {
+    nextWeek.rosterLine = manualRosterText || '';
+    nextWeek.manualRosterText = '';
+    return nextWeek;
+  }
+
+  nextWeek.rosterLine = rosterLine;
+  nextWeek.manualRosterText = '';
+  return nextWeek;
+}
+
 function normalizeWeek(week = {}) {
   return createWeek(week.startDate || getMondayISO(), {
     ...week,
     weekendWorked: week.weekendWorked === true ? true : week.weekendWorked === false ? false : null,
-    collapsed: Boolean(week.collapsed)
+    collapsed: Boolean(week.collapsed),
+    ...normalizeRosterLine(week)
   });
 }
 
@@ -74,8 +99,10 @@ const initialMonday = getMondayISO();
 
 const defaultState = {
   settings: {
+    cycleStartDate: initialMonday,
     weeklyHoursBaseline: '43:00',
-    daysBaselinePerPeriod: 16
+    daysBaselinePerPeriod: 17,
+    settingsCollapsed: true
   },
   timeline: {
     windowStartDate: initialMonday,
@@ -86,7 +113,23 @@ const defaultState = {
   leaveEntries: []
 };
 
-let state = loadState();
+let state = applyCollapsedDefaults(loadState());
+
+function applyCollapsedDefaults(nextState) {
+  nextState.settings.settingsCollapsed = true;
+
+  const weeksByStart = nextState.timeline?.weeksByStart || {};
+  const weekMap = getWeekMap(Object.values(weeksByStart));
+  weekMap.forEach((week, startDate) => {
+    weekMap.set(startDate, normalizeWeek({ ...week, collapsed: true }));
+  });
+
+  nextState.timeline.weeksByStart = Object.fromEntries(
+    [...weekMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  );
+
+  return nextState;
+}
 
 function loadState() {
   try {
@@ -103,10 +146,16 @@ function mergeState(parsed) {
   const merged = structuredClone(defaultState);
 
   if (parsed.settings) {
+    merged.settings.cycleStartDate = parsed.settings.cycleStartDate
+      || parsed.timeline?.windowStartDate
+      || merged.settings.cycleStartDate;
     merged.settings.weeklyHoursBaseline = parsed.settings.weeklyHoursBaseline || merged.settings.weeklyHoursBaseline;
     merged.settings.daysBaselinePerPeriod = Number.isFinite(parsed.settings.daysBaselinePerPeriod)
       ? parsed.settings.daysBaselinePerPeriod
       : Number(parsed.settings.daysBaselinePerPeriod) || merged.settings.daysBaselinePerPeriod;
+    merged.settings.settingsCollapsed = Object.prototype.hasOwnProperty.call(parsed.settings, 'settingsCollapsed')
+      ? Boolean(parsed.settings.settingsCollapsed)
+      : true;
   }
 
   const legacyWeeks = Array.isArray(parsed.cycle?.weeks) ? parsed.cycle.weeks : [];
@@ -250,6 +299,19 @@ function computeTimelineSummary(visibleWeeks) {
   };
 }
 
+function getRosterLineOptions() {
+  const rosterLines = new Set();
+
+  Object.values(state.timeline.weeksByStart || {}).forEach(week => {
+    const rosterLine = typeof week?.rosterLine === 'string' ? week.rosterLine.trim() : '';
+    if (rosterLine && rosterLine !== CUSTOM_ROSTER_LINE_VALUE) {
+      rosterLines.add(rosterLine);
+    }
+  });
+
+  return [...rosterLines].sort((left, right) => left.localeCompare(right));
+}
+
 function inclusiveDaysBetween(start, end) {
   const s = new Date(start + 'T00:00:00');
   const e = new Date(end + 'T00:00:00');
@@ -261,6 +323,14 @@ function navigateWindow(offsetWeeks) {
   state.timeline.windowStartDate = addDays(state.timeline.windowStartDate, offsetWeeks * 7);
   ensureWindowWeeks(state.timeline.windowStartDate);
   render();
+}
+
+function getCurrentCycleStartDate() {
+  const anchorStart = state.settings.cycleStartDate || state.timeline.windowStartDate || getMondayISO(new Date());
+  const todayISO = formatLocalISO(new Date());
+  const weekOffsetFromAnchor = diffWeeks(anchorStart, todayISO);
+  const cyclesFromAnchor = Math.floor(weekOffsetFromAnchor / WEEKS_IN_VIEW);
+  return addDays(anchorStart, cyclesFromAnchor * WEEKS_IN_VIEW * 7);
 }
 
 function commitWeekField(startDate, field, value) {
@@ -295,6 +365,49 @@ async function refreshAppAssets() {
   }
 }
 
+function exportStateAsJson() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    schemaVersion: 1,
+    state
+  };
+  const json = JSON.stringify(payload, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const fileDate = formatLocalISO(new Date());
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `roster-tracker-backup-${fileDate}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importStateFromJsonFile(file) {
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const raw = String(reader.result || '');
+      const parsed = JSON.parse(raw);
+      const candidateState = parsed && typeof parsed === 'object' && parsed.state ? parsed.state : parsed;
+      const nextState = applyCollapsedDefaults(mergeState(candidateState));
+      state = nextState;
+      render();
+      window.alert('Import complete.');
+    } catch {
+      window.alert('Import failed. Please select a valid JSON export file.');
+    }
+  };
+  reader.onerror = () => {
+    window.alert('Import failed. Could not read the selected file.');
+  };
+  reader.readAsText(file);
+}
+
 function render() {
   ensureWindowWeeks(state.timeline.windowStartDate);
   renderSettings();
@@ -306,7 +419,17 @@ function render() {
 }
 
 function renderSettings() {
-  document.getElementById('cycleStartDate').value = state.timeline.windowStartDate;
+  const settingsBody = document.getElementById('settingsBody');
+  const settingsToggle = document.getElementById('settingsToggle');
+  const settingsCollapseIndicator = document.getElementById('settingsCollapseIndicator');
+
+  settingsBody?.classList.toggle('hidden', state.settings.settingsCollapsed);
+  settingsToggle?.setAttribute('aria-expanded', String(!state.settings.settingsCollapsed));
+  if (settingsCollapseIndicator) {
+    settingsCollapseIndicator.textContent = state.settings.settingsCollapsed ? '[+]' : '[-]';
+  }
+
+  document.getElementById('cycleStartDate').value = state.settings.cycleStartDate;
   document.getElementById('weeklyHoursBaseline').value = state.settings.weeklyHoursBaseline;
   document.getElementById('daysBaselinePerPeriod').value = state.settings.daysBaselinePerPeriod;
 }
@@ -316,13 +439,14 @@ function renderWeeks() {
   container.innerHTML = '';
 
   const visibleWeeks = getVisibleWeeks();
+  const rosterLineOptions = getRosterLineOptions();
 
   const toolbar = document.createElement('div');
   toolbar.className = 'weeks-toolbar';
   toolbar.innerHTML = `
-    <button type="button" data-action="prevWindow">Previous 12 Weeks</button>
-    <div class="weeks-window-label">${visibleWeeks[0].startDate} to ${visibleWeeks[visibleWeeks.length - 1].startDate}</div>
-    <button type="button" data-action="nextWindow">Next 12 Weeks</button>
+    <button type="button" class="weeks-nav-button" data-action="prevWindow">Previous 12 Weeks</button>
+    <button type="button" class="weeks-nav-button weeks-nav-current" data-action="currentWindow">Current 12 Weeks</button>
+    <button type="button" class="weeks-nav-button" data-action="nextWindow">Next 12 Weeks</button>
   `;
   container.appendChild(toolbar);
 
@@ -330,18 +454,22 @@ function renderWeeks() {
     const summaryHours = week.hoursWorked || '—';
     const summaryDays = week.daysWorked !== '' ? week.daysWorked : '—';
     const summaryWeekend = week.weekendWorked === true ? 'Worked' : week.weekendWorked === false ? 'Not worked' : 'Not set';
+    const summaryStartDate = formatDisplayDate(week.startDate);
+    const rosterLineValue = week.rosterLine || CUSTOM_ROSTER_LINE_VALUE;
+    const weekRosterLines = rosterLineOptions.includes(week.rosterLine) ? rosterLineOptions : [...rosterLineOptions, week.rosterLine].filter(Boolean).sort((left, right) => left.localeCompare(right));
 
     const card = document.createElement('div');
     card.className = `week-card period-${week.period} ${week.collapsed ? 'collapsed' : ''}`;
     card.innerHTML = `
       <button type="button" class="week-toggle" data-action="toggleWeek" data-start-date="${week.startDate}">
         <span class="week-title">Week ${week.displayNumber} · Period ${week.period}</span>
-        <span class="week-summary">${week.startDate} · ${summaryHours} hrs · ${summaryDays} days · Weekend: ${summaryWeekend}</span>
+        <span class="collapse-indicator" aria-hidden="true">${week.collapsed ? '[+]' : '[-]'}</span>
+        <span class="week-summary">${summaryStartDate} · ${summaryHours} hrs · ${summaryDays} days · Weekend: ${summaryWeekend}</span>
       </button>
       <div class="week-body ${week.collapsed ? 'hidden' : ''}">
         <div class="field">
           <label>Week Start Date</label>
-          <input type="date" value="${week.startDate}" disabled />
+          <input type="text" value="${summaryStartDate}" disabled />
         </div>
         <div class="field">
           <label>Hours Worked ([h]:mm)</label>
@@ -354,15 +482,13 @@ function renderWeeks() {
         <div class="field">
           <label>Roster Line</label>
           <select data-field="rosterLine" data-start-date="${week.startDate}">
-            <option ${week.rosterLine === 'Roster 1' ? 'selected' : ''}>Roster 1</option>
-            <option ${week.rosterLine === 'Roster 2' ? 'selected' : ''}>Roster 2</option>
-            <option ${week.rosterLine === 'Roster 3' ? 'selected' : ''}>Roster 3</option>
-            <option ${week.rosterLine === 'Manual Entry' ? 'selected' : ''}>Manual Entry</option>
+            <option value="${CUSTOM_ROSTER_LINE_VALUE}" ${rosterLineValue === CUSTOM_ROSTER_LINE_VALUE ? 'selected' : ''}>Custom / New...</option>
+            ${weekRosterLines.map(line => `<option value="${line}" ${week.rosterLine === line ? 'selected' : ''}>${line}</option>`).join('')}
           </select>
         </div>
-        <div class="field ${week.rosterLine === 'Manual Entry' ? '' : 'hidden'}">
-          <label>Manual Roster Text</label>
-          <input type="text" value="${week.manualRosterText || ''}" data-field="manualRosterText" data-start-date="${week.startDate}" />
+        <div class="field ${week.rosterLine ? 'hidden' : ''}">
+          <label>Roster Line Name</label>
+          <input type="text" placeholder="Enter roster line" value="${week.manualRosterText || ''}" data-field="manualRosterText" data-start-date="${week.startDate}" />
         </div>
         <div class="field">
           <label>Weekend Worked</label>
@@ -378,6 +504,11 @@ function renderWeeks() {
   });
 
   container.querySelector('[data-action="prevWindow"]')?.addEventListener('click', () => navigateWindow(-WEEKS_IN_VIEW));
+  container.querySelector('[data-action="currentWindow"]')?.addEventListener('click', () => {
+    state.timeline.windowStartDate = getCurrentCycleStartDate();
+    ensureWindowWeeks(state.timeline.windowStartDate);
+    render();
+  });
   container.querySelector('[data-action="nextWindow"]')?.addEventListener('click', () => navigateWindow(WEEKS_IN_VIEW));
 
   container.querySelectorAll('[data-action="toggleWeek"]').forEach(el => {
@@ -403,10 +534,24 @@ function handleWeekToggle(event) {
   render();
 }
 
+function handleSettingsToggle() {
+  state.settings.settingsCollapsed = !state.settings.settingsCollapsed;
+  render();
+}
+
 function handleWeekBlur(event) {
   const startDate = event.target.dataset.startDate;
   const field = event.target.dataset.field;
   const value = event.target.value;
+
+  if (field === 'manualRosterText') {
+    const rosterLine = value.trim();
+    commitWeekField(startDate, 'rosterLine', rosterLine);
+    commitWeekField(startDate, 'manualRosterText', '');
+    render();
+    return;
+  }
+
   commitWeekField(startDate, field, value);
   render();
 }
@@ -418,6 +563,8 @@ function handleWeekChange(event) {
 
   if (field === 'weekendWorked') {
     value = value === 'true' ? true : value === 'false' ? false : null;
+  } else if (field === 'rosterLine' && value === CUSTOM_ROSTER_LINE_VALUE) {
+    value = '';
   }
 
   commitWeekField(startDate, field, value);
@@ -476,16 +623,40 @@ function renderPeriodSummaries() {
 function renderCycleSummary() {
   const visibleWeeks = getVisibleWeeks();
   const s = computeTimelineSummary(visibleWeeks);
-  const varianceOver = s.varianceMinutes > 0;
+  const cycleStartDate = state.timeline.windowStartDate;
+  const cycleEndDate = addDays(cycleStartDate, (WEEKS_IN_VIEW * 7) - 1);
+  const todayISO = formatLocalISO(new Date());
+  const cycleStatus = todayISO < cycleStartDate
+    ? 'Future'
+    : todayISO > cycleEndDate
+      ? 'Archived'
+      : 'Current';
+  const averageHoursOver = s.varianceMinutes > 0;
+  const totalHoursVarianceMinutes = s.totalMinutes - s.baseHours12Weeks;
+  const totalHoursVarianceText = s.recordedWeeks ? minutesToVarianceLabel(totalHoursVarianceMinutes) : 'Awaiting data';
   const weekendsOver = s.weekendsWorked > 6;
+  const periodAverageDaysMarkup = Array.from({ length: PERIODS_IN_VIEW }, (_, index) => {
+    const periodSummary = computePeriodSummary(visibleWeeks, index);
+    const content = periodSummary.completeForDays
+      ? `${periodSummary.totalDays}`
+      : 'N/A';
+    const className = periodSummary.daysVariance !== null
+      ? statusClass(periodSummary.daysVariance > 0)
+      : '';
 
+    return `<span class="${className}">${content}</span>`;
+  }).join(' <span class="metric-separator">|</span> ');
+
+  document.getElementById('cycleMeta').textContent = `${formatDisplayDate(cycleStartDate)} to ${formatDisplayDate(cycleEndDate)} | ${cycleStatus} Cycle`;
   document.getElementById('weeksRecorded').textContent = `${s.recordedWeeks} / ${WEEKS_IN_VIEW}`;
   document.getElementById('totalActualHours').textContent = minutesToHourString(s.totalMinutes);
-  document.getElementById('avgWeeklyHours').textContent = s.recordedWeeks ? minutesToHourString(s.averageMinutes) : '0:00';
-
-  const varianceEl = document.getElementById('weeklyVariance');
-  varianceEl.textContent = s.recordedWeeks ? minutesToVarianceLabel(s.varianceMinutes) : 'Awaiting data';
-  varianceEl.className = s.recordedWeeks ? statusClass(varianceOver) : '';
+  const avgWeeklyHoursEl = document.getElementById('avgWeeklyHours');
+  avgWeeklyHoursEl.textContent = s.recordedWeeks ? minutesToHourString(s.averageMinutes) : '0:00';
+  avgWeeklyHoursEl.className = s.recordedWeeks ? statusClass(averageHoursOver) : '';
+  const totalHoursVarianceEl = document.getElementById('totalHoursVariance');
+  totalHoursVarianceEl.textContent = totalHoursVarianceText;
+  totalHoursVarianceEl.className = s.recordedWeeks ? statusClass(totalHoursVarianceMinutes > 0) : '';
+  document.getElementById('periodAverageDays').innerHTML = periodAverageDaysMarkup;
 
   const weekendsEl = document.getElementById('weekendsWorked');
   weekendsEl.textContent = `${s.weekendsWorked} / 6`;
@@ -510,7 +681,8 @@ function renderLeaveSection() {
   list.innerHTML = filtered.length
     ? filtered.map(entry => `
         <div class="leave-item">
-          <strong>${entry.startDate} to ${entry.endDate}</strong>
+          <button type="button" class="leave-delete-button" data-action="deleteLeave" data-leave-id="${entry.id}">Delete</button>
+          <strong>${formatDisplayDate(entry.startDate)} to ${formatDisplayDate(entry.endDate)}</strong>
           <div>${entry.totalDays} day(s)</div>
           <div>${entry.medicalCertificate ? 'Medical certificate provided' : 'No medical certificate'}</div>
         </div>
@@ -519,6 +691,7 @@ function renderLeaveSection() {
 }
 
 document.getElementById('cycleStartDate').addEventListener('change', e => {
+  state.settings.cycleStartDate = e.target.value;
   state.timeline.windowStartDate = e.target.value;
   ensureWindowWeeks(state.timeline.windowStartDate);
   render();
@@ -534,8 +707,42 @@ document.getElementById('daysBaselinePerPeriod').addEventListener('input', e => 
   render();
 });
 
+document.getElementById('settingsToggle')?.addEventListener('click', handleSettingsToggle);
+document.getElementById('exportJsonButton')?.addEventListener('click', exportStateAsJson);
+document.getElementById('importJsonButton')?.addEventListener('click', () => {
+  document.getElementById('importJsonInput')?.click();
+});
+document.getElementById('importJsonInput')?.addEventListener('change', event => {
+  const file = event.target.files && event.target.files[0];
+  const confirmed = window.confirm('Importing will replace current saved data. Continue?');
+  if (!confirmed) {
+    event.target.value = '';
+    return;
+  }
+
+  importStateFromJsonFile(file);
+  event.target.value = '';
+});
+
 document.getElementById('leaveYearFilter').addEventListener('input', renderLeaveSection);
-document.getElementById('devRefreshButton')?.addEventListener('click', refreshAppAssets);
+document.getElementById('devRefreshButton')?.addEventListener('click', () => {
+  const confirmed = window.confirm('Refresh app assets now? This will clear cached files and reload the app.');
+  if (!confirmed) return;
+  refreshAppAssets();
+});
+document.getElementById('leaveList').addEventListener('click', event => {
+  const deleteButton = event.target.closest('[data-action="deleteLeave"]');
+  if (!deleteButton) return;
+
+  const leaveId = deleteButton.dataset.leaveId;
+  if (!leaveId) return;
+
+  const confirmed = window.confirm('Delete this leave entry?');
+  if (!confirmed) return;
+
+  state.leaveEntries = state.leaveEntries.filter(entry => entry.id !== leaveId);
+  render();
+});
 
 document.getElementById('leaveForm').addEventListener('submit', e => {
   e.preventDefault();
