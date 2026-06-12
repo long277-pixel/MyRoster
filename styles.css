@@ -158,12 +158,18 @@ input, select, button {
 
 .weeks-toolbar {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(3, 1fr);
+  width: 100%;
+  max-width: none;
+  margin: 0 0 12px;
   gap: 8px;
-  margin-bottom: 12px;
 }
 
 .weeks-nav-button {
+  width: 100%;
+  padding: 8px 6px;
+  font-size: 0.86rem;
+  line-height: 1.15;
   background: #23482d;
   border: 1px solid #3a6a47;
   color: #e7f8eb;
@@ -221,6 +227,10 @@ input, select, button {
 .inline-metrics {
   display: inline-block;
   line-height: 1.6;
+}
+
+#periodAverageDays {
+  white-space: nowrap;
 }
 
 .metric-separator {
@@ -286,4 +296,14 @@ input, select, button {
 
 .hidden {
   display: none;
+}
+
+@media (max-width: 480px) {
+  .total-days-item {
+    grid-column: 1 / -1;
+  }
+
+  #periodAverageDays {
+    font-size: 0.95rem;
+  }
 }

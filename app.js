@@ -297,7 +297,7 @@ function computeTimelineSummary(visibleWeeks) {
     averageMinutes,
     varianceMinutes,
     weekendsWorked,
-    baseHours12Weeks: baselineMinutes * WEEKS_IN_VIEW
+    baselineMinutesForRecordedWeeks: baselineMinutes * recordedWeeks.length
   };
 }
 
@@ -658,7 +658,7 @@ function renderCycleSummary() {
       ? 'Archived'
       : 'Current';
   const averageHoursOver = s.varianceMinutes > 0;
-  const totalHoursVarianceMinutes = s.totalMinutes - s.baseHours12Weeks;
+  const totalHoursVarianceMinutes = s.totalMinutes - s.baselineMinutesForRecordedWeeks;
   const totalHoursVarianceText = s.recordedWeeks ? minutesToVarianceLabel(totalHoursVarianceMinutes) : 'Awaiting data';
   const weekendsOver = s.weekendsWorked > 6;
   const periodAverageDaysMarkup = Array.from({ length: PERIODS_IN_VIEW }, (_, index) => {
