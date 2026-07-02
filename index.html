@@ -34,6 +34,12 @@
             <label for="daysBaselinePerPeriod">Days Baseline Per 4 Weeks</label>
             <input id="daysBaselinePerPeriod" type="number" min="0" step="1" />
           </div>
+          <div class="field checkbox-field">
+            <label>
+              <input id="manualRosterOnlyModeToggle" type="checkbox" />
+              Manual roster mode only
+            </label>
+          </div>
           <div class="field settings-actions">
             <button id="exportJsonButton" class="btn" type="button">Backup</button>
             <button id="importJsonButton" class="btn" type="button">Restore</button>
@@ -45,84 +51,121 @@
       </section>
 
       <section class="card">
-        <h2>12-Week Summary</h2>
-        <p id="cycleMeta" class="summary-meta">0000-00-00 to 0000-00-00 | Current Cycle</p>
-        <div class="summary-grid">
-          <div class="summary-item">
-            <span class="label">Weeks Recorded</span>
-            <strong id="weeksRecorded">0 / 12</strong>
-          </div>
-          <div class="summary-item">
-            <span class="label">Total Actual Hours</span>
-            <strong id="totalActualHours">0:00</strong>
-          </div>
-          <div class="summary-item">
-            <span class="label">Average Weekly Hours</span>
-            <strong id="avgWeeklyHours">0:00</strong>
-          </div>
-          <div class="summary-item">
-            <span class="label">Total Hours Over/Under</span>
-            <strong id="totalHoursVariance" class="status-ok">Awaiting data</strong>
-          </div>
-          <div class="summary-item">
-            <span class="label">Weekends Worked</span>
-            <strong id="weekendsWorked" class="status-ok">0 / 6</strong>
-          </div>
-          <div class="summary-item total-days-item">
-            <span class="label">Total Days/Month</span>
-            <strong id="periodAverageDays" class="inline-metrics">N/A | N/A | N/A</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Weekly Entries</h2>
-        <p class="subtle">Enter data week by week. Summaries update automatically.</p>
-        <div id="weeksContainer"></div>
-      </section>
-
-      <section class="card">
-        <h2>Period Summaries</h2>
-        <div id="periodSummaries"></div>
-      </section>
-
-      <section class="card">
-        <h2>Personal Leave Tracker</h2>
-        <form id="leaveForm" class="leave-form">
-          <div class="field">
-            <label for="leaveStart">Start Date</label>
-            <input id="leaveStart" type="date" required />
-          </div>
-          <div class="field">
-            <label for="leaveEnd">End Date</label>
-            <input id="leaveEnd" type="date" required />
-          </div>
-          <div class="field checkbox-field">
+        <button type="button" id="summaryToggle" class="panel-toggle" aria-expanded="true">
+          <span>12-Week Summary</span>
+          <span id="summaryCollapseIndicator" class="collapse-indicator" aria-hidden="true">[-]</span>
+        </button>
+        <div id="summaryBody">
+          <div class="field checkbox-field summary-mode-toggle">
             <label>
-              <input id="leaveMedical" type="checkbox" />
-              Medical Certificate Provided
+              <input id="rolling12WeekSummaryToggle" type="checkbox" />
+              Use rolling 12-week summary
             </label>
           </div>
-          <button type="submit" class="btn">Add Leave Entry</button>
-        </form>
-
-        <div class="field">
-          <label for="leaveYearFilter">Calendar Year</label>
-          <input id="leaveYearFilter" type="number" min="2000" max="2100" step="1" />
-        </div>
-
-        <div class="summary-grid">
-          <div class="summary-item">
-            <span class="label">Leave Days This Year</span>
-            <strong id="leaveDaysTotal">0</strong>
+          <p id="cycleMeta" class="summary-meta">0000-00-00 to 0000-00-00 | Current Cycle</p>
+          <div class="summary-grid">
+            <div class="summary-item">
+              <span class="label">Weeks Recorded</span>
+              <strong id="weeksRecorded">0 / 12</strong>
+            </div>
+            <div class="summary-item">
+              <span class="label">Total Actual Hours</span>
+              <strong id="totalActualHours">0:00</strong>
+            </div>
+            <div class="summary-item">
+              <span class="label">Average Weekly Hours</span>
+              <strong id="avgWeeklyHours">0:00</strong>
+            </div>
+            <div class="summary-item">
+              <span class="label">Total Hours Over/Under</span>
+              <strong id="totalHoursVariance" class="status-ok">Awaiting data</strong>
+            </div>
+            <div class="summary-item">
+              <span class="label">Weekends Worked</span>
+              <strong id="weekendsWorked" class="status-ok">0 / 6</strong>
+            </div>
+            <div class="summary-item total-days-item">
+              <span class="label">Total Days/Month</span>
+              <strong id="periodAverageDays" class="inline-metrics">N/A | N/A | N/A</strong>
+            </div>
           </div>
-          <div class="summary-item">
-            <span class="label">Missing Certificates</span>
-            <strong id="missingCertificates">0</strong>
-          </div>
         </div>
+      </section>
 
-        <div id="leaveList" class="leave-list"></div>
+      <section class="card">
+        <button type="button" id="weeklyEntriesToggle" class="panel-toggle" aria-expanded="true">
+          <span>Weekly Entries</span>
+          <span id="weeklyEntriesCollapseIndicator" class="collapse-indicator" aria-hidden="true">[-]</span>
+        </button>
+        <div id="weeklyEntriesBody">
+          <p class="subtle">Enter data week by week. Summaries update automatically.</p>
+          <div id="weeksContainer"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <button type="button" id="periodSummariesToggle" class="panel-toggle" aria-expanded="true">
+          <span>Period Summaries</span>
+          <span id="periodSummariesCollapseIndicator" class="collapse-indicator" aria-hidden="true">[-]</span>
+        </button>
+        <div id="periodSummariesBody">
+          <div id="periodSummaries"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <button type="button" id="leaveTrackerToggle" class="panel-toggle" aria-expanded="true">
+          <span>Personal Leave Tracker</span>
+          <span id="leaveTrackerCollapseIndicator" class="collapse-indicator" aria-hidden="true">[-]</span>
+        </button>
+        <div id="leaveTrackerBody">
+          <div class="leave-summary-group">
+            <div class="summary-grid">
+              <div class="summary-item">
+                <span class="label" id="leaveDaysTotalLabel">Leave Days This Year</span>
+                <strong id="leaveDaysTotal">0</strong>
+              </div>
+              <div class="summary-item">
+                <span class="label">Missing Certificates</span>
+                <strong id="missingCertificates">0</strong>
+              </div>
+            </div>
+          </div>
+
+          <form id="leaveForm" class="leave-form">
+            <div class="field">
+              <label for="leaveStart">Start Date</label>
+              <input id="leaveStart" type="date" required />
+            </div>
+            <div class="field">
+              <label for="leaveEnd">End Date</label>
+              <input id="leaveEnd" type="date" required />
+            </div>
+            <div class="field checkbox-field">
+              <label>
+                <input id="leaveMedical" type="checkbox" />
+                Medical Certificate Provided
+              </label>
+            </div>
+            <button type="submit" class="btn">Add Leave Entry</button>
+          </form>
+
+          <div class="field">
+            <label for="leavePeriodMode">Period Mode</label>
+            <select id="leavePeriodMode">
+              <option value="calendar">Calendar Year</option>
+              <option value="rolling">Rolling 12 Months</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="leaveYearFilter" id="leaveYearFilterLabel">Calendar Year</label>
+            <input id="leaveYearFilter" type="number" min="2000" max="2100" step="1" />
+          </div>
+          <p id="leavePeriodMeta" class="subtle"></p>
+
+          <div id="leaveList" class="leave-list"></div>
+        </div>
       </section>
     </main>
 
