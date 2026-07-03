@@ -2649,15 +2649,18 @@ function renderWeeks() {
   container.innerHTML = '';
 
   const visibleWeeks = getVisibleWeeks();
+  const currentCycleStartDate = getCurrentCycleStartDate();
+  const displayedWindowOffset = diffWeeks(currentCycleStartDate, state.timeline.windowStartDate);
+  const navPosition = displayedWindowOffset < 0 ? 'previous' : displayedWindowOffset > 0 ? 'next' : 'current';
   const manualRosterOnlyMode = Boolean(state.settings.manualRosterOnlyMode);
   const templateRosterOptions = manualRosterOnlyMode ? [] : getRosterLineOptions();
 
   const toolbar = document.createElement('div');
   toolbar.className = 'weeks-toolbar';
   toolbar.innerHTML = `
-    <button type="button" class="weeks-nav-button" data-action="prevWindow">Previous 12 Weeks</button>
-    <button type="button" class="weeks-nav-button weeks-nav-current" data-action="currentWindow">Current 12 Weeks</button>
-    <button type="button" class="weeks-nav-button" data-action="nextWindow">Next 12 Weeks</button>
+    <button type="button" class="weeks-nav-button ${navPosition === 'previous' ? 'weeks-nav-current' : ''}" data-action="prevWindow">Previous 12 Weeks</button>
+    <button type="button" class="weeks-nav-button ${navPosition === 'current' ? 'weeks-nav-current' : ''}" data-action="currentWindow">Current 12 Weeks</button>
+    <button type="button" class="weeks-nav-button ${navPosition === 'next' ? 'weeks-nav-current' : ''}" data-action="nextWindow">Next 12 Weeks</button>
   `;
   container.appendChild(toolbar);
 
